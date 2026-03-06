@@ -4,61 +4,54 @@
 
 ### Project Overview
 
-pdfGPT is an Agentic RAG application for chatting with PDF documents.
-It uses a ReAct-style agent that searches, retrieves, and reasons over document content
-before generating answers with page citations.
+pdfGPT is a modern Next.js web application for document analysis using AI.
+Supports PDF, Word, Excel, PowerPoint, and text files.
+Offers both RAG (fast retrieval) and Agentic (deep analysis) modes.
 
-| Service | File | Port | Start Command |
-|---------|------|------|---------------|
-| Gradio Frontend | `app.py` | 7860 | `python app.py` |
-| FastAPI REST API | `api.py` | 8080 | `python api.py` |
+### Tech Stack
 
-### Supported LLM Providers
+- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS 4
+- **LLM**: Vercel AI SDK with multi-provider support (OpenAI, Anthropic, Google, Groq)
+- **Search**: TF-IDF based document search (runs entirely server-side, no external API)
+- **File parsing**: pdf-parse, mammoth (DOCX), xlsx (Excel)
 
-OpenAI, Anthropic, Google Gemini, Groq (free tier), Mistral, Cohere, Ollama (local).
-All routing handled by LiteLLM. See `config.py` `ModelRegistry` for the full model list.
-
-### Python Environment
-
-- **Python 3.10** via deadsnakes PPA. Venv at `/workspace/.venv`.
-- Activate: `source /workspace/.venv/bin/activate`
-
-### Running Services
+### Running Locally
 
 ```bash
-source /workspace/.venv/bin/activate
-python app.py   # Gradio UI on :7860
-python api.py   # REST API on :8080
+npm install
+npm run dev      # Dev server on :3000
+npm run build    # Production build
+npm run lint     # ESLint
 ```
-
-API health check: `curl http://localhost:8080/healthz`
 
 ### Environment Variables
 
-- `OPENAI_API_KEY` - Required for OpenAI models. Also used as default when no key is entered in the UI.
-- Other provider keys (optional): `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `COHERE_API_KEY`
+Set in `.env.local` or as Cursor Cloud secrets:
+- `OPENAI_API_KEY` - For OpenAI models (GPT-4o, GPT-4o Mini)
+- `GOOGLE_GENERATIVE_AI_API_KEY` - For Google Gemini models (free tier)
+- `GROQ_API_KEY` - For Groq models (Llama, Mixtral - free tier)
+- `ANTHROPIC_API_KEY` - For Anthropic Claude models
 
-### Architecture
+### Project Structure
 
 ```
-core/document.py     - PDF loading, text extraction, chunking (PyMuPDF)
-core/embeddings.py   - Local embeddings via sentence-transformers (all-MiniLM-L6-v2)
-core/vectorstore.py  - ChromaDB vector store for semantic search
-core/llm.py          - LLM abstraction via LiteLLM
-agents/tools.py      - Agent tools: search_document, get_page, final_answer
-agents/rag_agent.py  - ReAct agent with forced initial search
-config.py            - Model registry and app configuration
+src/app/page.tsx              - Main UI (React client component)
+src/app/layout.tsx            - Root layout
+src/app/api/chat/route.ts     - Chat API (streaming LLM responses)
+src/app/api/upload/route.ts   - File upload and parsing API
+src/lib/models.ts             - LLM model registry
+src/lib/document-processor.ts - Multi-format file parsing
+src/lib/search.ts             - TF-IDF document search
+legacy/                       - Previous Python/Gradio codebase
 ```
 
-### Lint and Tests
+### Deployment
 
-- Lint: `flake8 config.py core/ agents/ app.py api.py --max-line-length=120`
-- No automated test suite exists. Test manually via the Gradio UI or REST API.
+Deploys to Vercel via `vercel deploy` or GitHub integration. No special config needed.
 
-### Key Design Notes
+### Key Notes
 
-- The agent always performs a forced document search before LLM reasoning to prevent
-  the model from answering without consulting the document.
-- Embeddings are generated locally (no API calls) using sentence-transformers.
-  The model downloads on first use (~80MB).
-- ChromaDB runs in-memory. Document state is lost when the process restarts.
+- The app uses Vercel AI SDK's `streamText` for streaming responses.
+- Document chunks are stored in client state (React) and sent with each chat request.
+- TF-IDF search runs server-side in the API route; no vector DB or embedding API needed.
+- The `pdf-parse` package requires `serverExternalPackages` in next.config.ts.

@@ -1,4 +1,9 @@
-.venv/
-__pycache__/
+node_modules/
+.next/
+.env.local
+.env
 *.pyc
+__pycache__/
+.venv/
 corpus.pdf
+legacy/
