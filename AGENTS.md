@@ -4,54 +4,61 @@
 
 ### Project Overview
 
-pdfGPT is a RAG (Retrieval-Augmented Generation) application with two services:
+pdfGPT is an Agentic RAG application for chatting with PDF documents.
+It uses a ReAct-style agent that searches, retrieves, and reasons over document content
+before generating answers with page citations.
 
 | Service | File | Port | Start Command |
 |---------|------|------|---------------|
-| API Backend | `api.py` | 8080 | `lc-serve deploy local api` |
 | Gradio Frontend | `app.py` | 7860 | `python app.py` |
+| FastAPI REST API | `api.py` | 8080 | `python api.py` |
+
+### Supported LLM Providers
+
+OpenAI, Anthropic, Google Gemini, Groq (free tier), Mistral, Cohere, Ollama (local).
+All routing handled by LiteLLM. See `config.py` `ModelRegistry` for the full model list.
 
 ### Python Environment
 
-- **Python 3.10** is required (installed via deadsnakes PPA). The codebase targets Python 3.8 (per Dockerfile) but 3.10 is the minimum that works with all resolved dependencies.
-- Virtual environment lives at `/workspace/.venv`. Activate with `source /workspace/.venv/bin/activate`.
-
-### Critical Dependency Notes
-
-The `requirements.txt` pins versions that are mutually incompatible on modern systems. The working dependency set requires:
-
-- `langchain-serve==0.0.61` and `jina==3.15.2` must be installed with `--no-build-isolation --no-deps` because jina's transitive dependency `opentelemetry-exporter-prometheus>=1.12.0rc1` does not exist on PyPI (only beta versions are published).
-- `pydantic==1.10.x` and `fastapi==0.99.x` are required (lcserve is incompatible with pydantic v2).
-- `gradio==3.50.2` is needed because `app.py` uses the deprecated `.style()` method removed in gradio 4.x.
-- `tensorflow==2.15.1` is used (compatible with Python 3.10 and numpy 1.26.x).
-- `litellm==0.12.5` is needed for compatibility with `openai==0.27.4`.
-
-### Known Code Bug
-
-`app.py` line 92 (`demo.app.server.timeout = 60000`) references a non-existent Gradio attribute. This line crashes the app on every Gradio version. To run the frontend, use this workaround (does not modify the file):
-
-```bash
-source /workspace/.venv/bin/activate
-cd /workspace
-python -c "
-source = open('app.py').read()
-source = source.replace('demo.app.server.timeout = 60000', 'pass')
-exec(compile(source, 'app.py', 'exec'))
-"
-```
+- **Python 3.10** via deadsnakes PPA. Venv at `/workspace/.venv`.
+- Activate: `source /workspace/.venv/bin/activate`
 
 ### Running Services
 
-1. **Start API backend:** `source /workspace/.venv/bin/activate && cd /workspace && lc-serve deploy local api`
-2. **Start Gradio frontend** (with workaround): see above
-3. **Health check:** `curl http://localhost:8080/healthz` should return `{"status": "ok"}`
-4. **API docs:** Available at `http://localhost:8080/docs`
+```bash
+source /workspace/.venv/bin/activate
+python app.py   # Gradio UI on :7860
+python api.py   # REST API on :8080
+```
 
-### Lint
+API health check: `curl http://localhost:8080/healthz`
 
-No linter is configured in the repo. Use `flake8 api.py app.py --max-line-length=120` for basic checks. Existing lint warnings are present in the codebase.
+### Environment Variables
 
-### External Dependencies
+- `OPENAI_API_KEY` - Required for OpenAI models. Also used as default when no key is entered in the UI.
+- Other provider keys (optional): `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `COHERE_API_KEY`
 
-- **OpenAI API key** is required at runtime for the LLM completion step. Without a valid key, the PDF parsing and embedding pipeline still works but answer generation returns an API error.
-- **TensorFlow Hub** downloads the Universal Sentence Encoder model on first run (~1GB). After initial download it is cached.
+### Architecture
+
+```
+core/document.py     - PDF loading, text extraction, chunking (PyMuPDF)
+core/embeddings.py   - Local embeddings via sentence-transformers (all-MiniLM-L6-v2)
+core/vectorstore.py  - ChromaDB vector store for semantic search
+core/llm.py          - LLM abstraction via LiteLLM
+agents/tools.py      - Agent tools: search_document, get_page, final_answer
+agents/rag_agent.py  - ReAct agent with forced initial search
+config.py            - Model registry and app configuration
+```
+
+### Lint and Tests
+
+- Lint: `flake8 config.py core/ agents/ app.py api.py --max-line-length=120`
+- No automated test suite exists. Test manually via the Gradio UI or REST API.
+
+### Key Design Notes
+
+- The agent always performs a forced document search before LLM reasoning to prevent
+  the model from answering without consulting the document.
+- Embeddings are generated locally (no API calls) using sentence-transformers.
+  The model downloads on first use (~80MB).
+- ChromaDB runs in-memory. Document state is lost when the process restarts.
